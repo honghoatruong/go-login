@@ -18,7 +18,7 @@ const (
 	dbDriver = "mysql"
 	dbUser   = "root"
 	dbPass   = ""
-	dbName   = "godb"
+	dbName   = "jcmain"
 	dbRemote = ""
 )
 
@@ -36,7 +36,7 @@ func main() {
 	r.HandleFunc("/user/{id}", updateUserHandler).Methods("PUT")
 	r.HandleFunc("/user/{id}", deleteUserHandler).Methods("DELETE")
 	r.HandleFunc("/login_", loginHandler).Methods("POST")
-	r.HandleFunc("/current_user", getCurrentUserHandler).Methods("GET")
+	r.HandleFunc("/current_user", getCurrentUserHandler).Methods("POST")
 	r.HandleFunc("/login", loginPageHandler)
 	r.HandleFunc("/home", homePageHandler)
 
@@ -58,7 +58,7 @@ func loginPageHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Check in database
 		user, err := loginUser(db, email, password)
-		log.Println("user", user)
+		// log.Println("user", user)
 		if err != nil {
 			http.Error(w, "Name/Password not correct", http.StatusNotFound)
 			return
@@ -162,7 +162,6 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, er.Error(), http.StatusBadRequest)
 		return
 	}
-	log.Println(account)
 
 	user, err := loginUser(db, account.Name, account.Password)
 	if err != nil {
@@ -179,8 +178,9 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func loginUser(db *sql.DB, email, password string) (*User, error) {
-	query := "SELECT * FROM `users` WHERE `email` = ? AND `password` = ?"
-	row := db.QueryRow(query, email, password)
+	query := "SELECT customer_id, firstname, email, password FROM `oc_customer` WHERE `email` = ? AND (`password` = SHA1(CONCAT(salt, SHA1(CONCAT(salt, SHA1(?))))) OR `password` = md5(?))"
+	// query := "SELECT * FROM `oc_customer` WHERE `email` = ? AND `password` =  ?"
+	row := db.QueryRow(query, email, password, password)
 
 	user := &User{}
 	err := row.Scan(&user.ID, &user.Name, &user.Email, &user.Password)
@@ -193,7 +193,6 @@ func loginUser(db *sql.DB, email, password string) (*User, error) {
 func createUserHandler(w http.ResponseWriter, r *http.Request) {
 	db, err := sql.Open(dbDriver, dbUser+":"+dbPass+"@"+dbRemote+"/"+dbName)
 	if err != nil {
-		log.Println(err.Error())
 		panic(err.Error())
 	}
 	defer db.Close()
@@ -207,7 +206,7 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, er.Error(), http.StatusBadRequest)
 		return
 	}
-	log.Println(user)
+	// log.Println(user)
 
 	CreateUser(db, user.Name, user.Email, user.Password)
 	if err != nil {
@@ -220,10 +219,10 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateUser(db *sql.DB, name, email, password string) error {
-	query := "INSERT INTO users (name, email, password) VALUES (?, ?, ?)"
+	query := "INSERT INTO oc_customer (name, email, password) VALUES (?, ?, ?)"
 
 	_, err := db.Exec(query, name, email, password)
-	log.Println(name, email, password)
+	// log.Println(name, email, password)
 	if err != nil {
 		return err
 	}
@@ -239,6 +238,13 @@ type User struct {
 type Account struct {
 	Name     string
 	Password string
+}
+type Customer struct {
+	ID int
+}
+
+type Email struct {
+	Email string
 }
 
 func getUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -269,7 +275,7 @@ func getUserHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 func GetUser(db *sql.DB, id int) (*User, error) {
-	query := "SELECT * FROM users WHERE id = ?"
+	query := "SELECT customer_id, firstname, email, password FROM oc_customer WHERE customer_id = ?"
 	row := db.QueryRow(query, id)
 
 	user := &User{}
@@ -277,6 +283,7 @@ func GetUser(db *sql.DB, id int) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return user, nil
 }
 func updateUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -306,7 +313,7 @@ func updateUserHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "User updated successfully")
 }
 func UpdateUser(db *sql.DB, id int, name, email string) error {
-	query := "UPDATE users SET name = ?, email = ? WHERE id = ?"
+	query := "UPDATE oc_customer SET name = ?, email = ? WHERE customer_id = ?"
 	_, err := db.Exec(query, name, email, id)
 	if err != nil {
 		return err
@@ -347,7 +354,7 @@ func deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 func DeleteUser(db *sql.DB, id int) error {
-	query := "DELETE FROM users WHERE id = ?"
+	query := "DELETE FROM oc_customer WHERE customer_id = ?"
 	_, err := db.Exec(query, id)
 	if err != nil {
 		return err
@@ -355,14 +362,26 @@ func DeleteUser(db *sql.DB, id int) error {
 	return nil
 }
 
+type RequestBody struct {
+	Secret_key string
+}
+
 func getCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	var t RequestBody
+	err := decoder.Decode(&t)
+	if err != nil {
+		panic(err)
+	}
+	if t.Secret_key != "Vf@20212" {
+		return
+	}
+
 	db, err := sql.Open(dbDriver, dbUser+":"+dbPass+"@/"+dbName)
 	if err != nil {
 		panic(err.Error())
 	}
 	defer db.Close()
-
-	log.Println("cyrr", current_id)
 
 	// Call the GetUser function to fetch the user data from the database
 	user, err := GetUser(db, current_id)
@@ -379,7 +398,7 @@ func getCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetCurrentUser(db *sql.DB) (*User, error) {
-	query := "SELECT * FROM users WHERE id = 64274"
+	query := "SELECT customer_id, firstname, email, password FROM oc_customer WHERE customer_id = 64274" // test
 	row := db.QueryRow(query)
 
 	user := &User{}
