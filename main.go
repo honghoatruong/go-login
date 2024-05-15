@@ -37,6 +37,7 @@ func main() {
 	r.HandleFunc("/user/{id}", deleteUserHandler).Methods("DELETE")
 	r.HandleFunc("/login_", loginHandler).Methods("POST")
 	r.HandleFunc("/current_user", getCurrentUserHandler).Methods("POST")
+	// r.HandleFunc("/current_auth", getAuthDiningHandler).Methods("GET")
 	r.HandleFunc("/login", loginPageHandler)
 	r.HandleFunc("/home", homePageHandler)
 
@@ -44,6 +45,14 @@ func main() {
 	log.Println("Server listening on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
+
+type AuthResquestBody struct {
+	Secret_key string
+	Uid        string
+	Salt       string
+	Token      string
+}
+
 func loginPageHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		email := r.FormValue("email")
@@ -67,10 +76,21 @@ func loginPageHandler(w http.ResponseWriter, r *http.Request) {
 		if user != nil {
 			// Save session
 			cookie := &http.Cookie{
-				Name:   "ID",
-				Value:  strconv.Itoa(user.ID), // Some encoded value
-				Path:   "/",                   // Otherwise it defaults to the /login if you create this on /login (standard cookie behaviour)
-				MaxAge: 86400,                 // One day
+				Name:  "ID",
+				Value: strconv.Itoa(user.ID),
+				// Value:  , // Some encoded value
+				Path:   "/",   // Otherwise it defaults to the /login if you create this on /login (standard cookie behaviour)
+				MaxAge: 86400, // One day
+			}
+
+			http.SetCookie(w, cookie)
+
+			cookie = &http.Cookie{
+				Name:  "LOGGED",
+				Value: strconv.Itoa(1),
+				// Value:  , // Some encoded value
+				Path:   "/",   // Otherwise it defaults to the /login if you create this on /login (standard cookie behaviour)
+				MaxAge: 86400, // One day
 			}
 
 			http.SetCookie(w, cookie)
@@ -143,6 +163,16 @@ func logoutPageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, c)
+	c = &http.Cookie{
+		Name:    "LOGGED",
+		Value:   "",
+		Path:    "/",
+		Expires: time.Unix(0, 0),
+
+		HttpOnly: true,
+	}
+	http.SetCookie(w, c)
+
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -394,17 +424,55 @@ func getCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(user.ID)
 }
 
-func GetCurrentUser(db *sql.DB) (*User, error) {
-	query := "SELECT customer_id, firstname, email, password FROM oc_customer WHERE customer_id = 64274" // test
-	row := db.QueryRow(query)
+// func GetCurrentUser(db *sql.DB) (*User, error) {
+// 	query := "SELECT customer_id, firstname, email, password FROM oc_customer WHERE customer_id = 64274" // test
+// 	row := db.QueryRow(query)
 
-	user := &User{}
-	err := row.Scan(&user.ID, &user.Name, &user.Email, &user.Password)
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
-}
+// 	user := &User{}
+// 	err := row.Scan(&user.ID, &user.Name, &user.Email, &user.Password)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return user, nil
+// }
+
+// func getAuthDiningHandler(w http.ResponseWriter, r *http.Request) {
+// 	user_login := false
+// 	customer_id := 0
+
+// 	decoder := json.NewDecoder(r.Body)
+// 	var t AuthResquestBody
+// 	err := decoder.Decode(&t)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+
+// 	if r.Method == http.MethodPost {
+// 		secret_key := "abc"
+// 		uid := t.Uid
+// 		salt := t.Salt
+
+// 		h := sha1.New()
+// 		token := h.Sum([]byte(uid + salt + secret_key))
+
+// 		if token == t.Token {
+// 			customer_id = t.Uid
+// 		} else {
+
+// 			return
+// 		}
+
+// 		if customer_id > 0 {
+
+// 		}
+
+// 	}
+// 	// Convert the user object to JSON and send it in the response
+// 	w.Header().Set("Content-Type", "application/json")
+// 	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+// 	json.NewEncoder(w).Encode(user_login)
+// }
